@@ -4,3 +4,4 @@ dental-backend/.gitignore
 dist/
 build/
 .env
+.env.local
