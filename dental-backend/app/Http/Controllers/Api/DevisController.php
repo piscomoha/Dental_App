@@ -10,7 +10,7 @@ class DevisController extends Controller
 {
     public function index()
     {
-        return Devis::with('consultation')->get();
+        return Devis::with('consultation.rendezVous.patient')->get();
     }
 
     public function store(Request $r)
@@ -20,7 +20,7 @@ class DevisController extends Controller
 
     public function show($id)
     {
-        return Devis::with('consultation')->findOrFail($id);
+        return Devis::with('consultation.rendezVous.patient')->findOrFail($id);
     }
 
     public function update(Request $r, $id)

@@ -8,6 +8,7 @@ import Treatments from './pages/Treatments';
 import Documents from './pages/Documents';
 import SecretaryDashboard from './pages/SecretaryDashboard';
 import PatientDashboard from './pages/PatientDashboard';
+import MedicalRecord from './pages/MedicalRecord';
 import Layout from './components/Layout';
 import SplashScreen from './components/SplashScreen';
 import LogoutScreen from './components/LogoutScreen';
@@ -92,6 +93,7 @@ function App() {
               <Route path="documents" element={<Documents />} />
               <Route path="secretariat" element={<SecretaryDashboard />} />
               <Route path="espace-patient" element={<PatientDashboard />} />
+              <Route path="medical-record/:patientId" element={<MedicalRecord />} />
             </Route>
           </Routes>
         </BrowserRouter>

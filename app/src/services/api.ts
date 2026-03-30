@@ -65,6 +65,7 @@ export interface BackendPatient {
   date_naissance: string;
   adresse: string | null;
   sexe: string;
+  ville?: string | null;
 }
 
 export const patientApi = {
@@ -253,6 +254,20 @@ export interface BackendOrdonnance {
   consultation?: {
     id: number;
     rendez_vous?: {
+      id: number;
+      patient_id: number;
+      patient?: {
+        nom: string;
+        prenom: string;
+      };
+      dentiste?: {
+        nom: string;
+        prenom: string;
+      };
+    };
+    rendezVous?: {
+      id: number;
+      patient_id: number;
       patient?: {
         nom: string;
         prenom: string;
@@ -370,6 +385,36 @@ export const devisApi = {
     }),
 };
 
+// Patient Images API (Laravel /api/patients/{id}/images)
+export interface BackendPatientImage {
+  id: number;
+  patient_id: number;
+  image_path: string;
+  type: string;
+  description: string | null;
+  created_at: string;
+}
+
+export const patientImageApi = {
+  list: (patientId: number | string) => request<BackendPatientImage[]>(`/patients/${patientId}/images`),
+  create: (patientId: number | string, formData: FormData) => {
+    return fetch(`${API_URL}/patients/${patientId}/images`, {
+      method: 'POST',
+      body: formData, // FormData handles Content-Type automatically
+      headers: {
+        'Accept': 'application/json',
+      }
+    }).then(res => {
+      if (!res.ok) throw new Error('Failed to upload image');
+      return res.json();
+    });
+  },
+  delete: (id: number | string) =>
+    request<void>(`/patient-images/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
 // Password Reset API
 export interface PasswordResetResponse {
   message: string;
@@ -391,5 +436,32 @@ export const passwordResetApi = {
     request<PasswordResetResponse>('/password-reset/reset', {
       method: 'POST',
       body: JSON.stringify({ email, token, password, password_confirmation }),
+    }),
+};
+// Auth API
+export interface AuthResponse {
+  message: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+}
+
+export const authApi = {
+  register: (name: string, email: string, password: string, password_confirmation: string) =>
+    request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, password_confirmation }),
+    }),
+  login: (email: string, password: string) =>
+    request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  getMe: () =>
+    request<{ user: { id: number; name: string; email: string; role: string } }>('/auth/me', {
+      method: 'GET',
     }),
 };

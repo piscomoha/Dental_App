@@ -139,7 +139,7 @@ export default function PatientDashboard() {
             </p>
             <p className="text-2xl font-bold text-gray-900">{currentPatientName}</p>
             <p className="text-xs text-gray-500 mt-1">
-              Merci de votre confiance — Cabinet Dentaire Dr. Benali & Associés
+              Merci de votre confiance — Cabinet Dentaire
             </p>
           </div>
           <div className="w-12 h-12 bg-[#0d3d3d] rounded-xl flex items-center justify-center">

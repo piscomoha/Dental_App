@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Plus, Edit, Trash2, FileText, Settings, CheckCircle2, Calendar } from 'lucide-react';
-import { treatmentTypes } from '@/data/mockData';
+import { treatmentTypes, treatments as mockTreatments } from '@/data/mockData';
 import { LoadingOverlay } from '@/components/ui/loading-overlay';
 import { traitementApi, type BackendTraitement } from '@/services/api';
 import { useDataSync } from '@/context/DataSyncContext';
@@ -59,13 +59,17 @@ export default function TreatmentsPage() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const backendTreatments = await traitementApi.list().catch(() => []);
+      const backendTreatments = await traitementApi.list();
       
-      if (backendTreatments) {
+      if (backendTreatments && backendTreatments.length > 0) {
         setTreatmentsList(backendTreatments.map(mapBackendToFrontend));
+      } else {
+        // Fallback to mock data if backend is empty
+        setTreatmentsList(mockTreatments);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load treatments, falling back to mock data:', err);
+      setTreatmentsList(mockTreatments);
     } finally {
       setIsLoading(false);
     }

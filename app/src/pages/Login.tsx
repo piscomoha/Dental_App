@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Eye, EyeOff } from 'lucide-react';
 import { demoUsers } from '@/data/mockData';
 import LoginTransitionScreen from '@/components/LoginTransitionScreen';
-import { passwordResetApi } from '@/services/api';
+import { passwordResetApi, authApi } from '@/services/api';
 
 interface LoginProps {
   onLogin: (user: { name: string; role: string }) => void;
@@ -31,16 +31,107 @@ export default function Login({ onLogin }: LoginProps) {
   const [resetToken, setResetToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
+  // Registration state
+  const [regFullName, setRegFullName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [regError, setRegError] = useState('');
+  const [regMessage, setRegMessage] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
+  
   // Transition state
   const [transitioningUser, setTransitioningUser] = useState<{ name: string; role: string } | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = demoUsers.find(u => u.email === email);
-    if (user) {
-      setTransitioningUser({ name: user.name, role: user.role });
-    } else {
-      alert('Email non reconnu. Utilisez doctor@dental.ma ou receptionist@dental.ma');
+    setRegError('');
+    
+    if (!email || !password) {
+      alert('Veuillez entrer votre email et mot de passe');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await authApi.login(email, password);
+      
+      // Successfully logged in with database credentials
+      setTransitioningUser({
+        name: response.user.name,
+        role: response.user.role,
+      });
+    } catch (error) {
+      // Fallback to demo users for testing
+      const user = demoUsers.find(u => u.email === email);
+      if (user) {
+        setTransitioningUser({ name: user.name, role: user.role });
+      } else {
+        alert('Email ou mot de passe incorrect. Essayez: doctor@dental.ma ou les comptes de démonstration');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError('');
+    setRegMessage('');
+
+    // Validation
+    if (!regFullName || !regEmail || !regPassword || !regConfirmPassword) {
+      setRegError('Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (regPassword.length < 8) {
+      setRegError('Le mot de passe doit avoir au moins 8 caractères');
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      setRegError('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    // Validate email domain
+    const isDoctor = regEmail.endsWith('@doctor.ma');
+    const isSecretary = regEmail.endsWith('@secretariat.ma');
+    const isPatient = !isDoctor && !isSecretary;
+
+    if (!isDoctor && !isSecretary && !isPatient) {
+      if (!regEmail.includes('@')) {
+        setRegError('Veuillez entrer une adresse email valide');
+        return;
+      }
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await authApi.register(regFullName, regEmail, regPassword, regConfirmPassword);
+      
+      setRegMessage('✓ Inscription réussie! Identifiants sauvegardés. Redirection vers connexion...');
+      setRegError('');
+
+      // Clear registration form
+      setRegFullName('');
+      setRegEmail('');
+      setRegPassword('');
+      setRegConfirmPassword('');
+
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        setEmail(response.user.email);
+        setPassword('');
+        setActiveTab('login');
+        setRegMessage('');
+      }, 2000);
+    } catch (error) {
+      setRegError(error instanceof Error ? error.message : 'Erreur lors de l\'inscription');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -153,7 +244,6 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
           <div className="text-white">
             <h1 className="font-bold text-xl">Cabinet Dentaire</h1>
-            <p className="text-xs text-gray-300">Dr. Benali & Associés</p>
           </div>
         </div>
 
@@ -296,9 +386,15 @@ export default function Login({ onLogin }: LoginProps) {
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-[#0d3d3d]">Créer un compte</h2>
                 <p className="text-gray-500 text-sm mt-1">Rejoignez notre cabinet dentaire</p>
+                <p className="text-xs text-gray-400 mt-3 bg-blue-50 p-2 rounded">
+                  📧 <strong>Formats d'email:</strong><br/>
+                  • Docteur: name@doctor.ma<br/>
+                  • Secrétaire: name@secretariat.ma<br/>
+                  • Patient: votre email personnel
+                </p>
               </div>
 
-              <form className="space-y-4">
+              <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="fullName" className="text-gray-700 text-sm">
                     Nom complet <span className="text-red-500">*</span>
@@ -306,6 +402,11 @@ export default function Login({ onLogin }: LoginProps) {
                   <Input
                     id="fullName"
                     type="text"
+                    value={regFullName}
+                    onChange={(e) => {
+                      setRegFullName(e.target.value);
+                      setRegError('');
+                    }}
                     className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg"
                     placeholder="Votre nom complet"
                   />
@@ -318,8 +419,13 @@ export default function Login({ onLogin }: LoginProps) {
                   <Input
                     id="regEmail"
                     type="email"
+                    value={regEmail}
+                    onChange={(e) => {
+                      setRegEmail(e.target.value);
+                      setRegError('');
+                    }}
                     className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg"
-                    placeholder="votre@email.com"
+                    placeholder="nom@doctor.ma ou votre@email.com"
                   />
                 </div>
 
@@ -327,38 +433,74 @@ export default function Login({ onLogin }: LoginProps) {
                   <Label htmlFor="regPassword" className="text-gray-700 text-sm">
                     Mot de passe <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="regPassword"
-                    type="password"
-                    className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg"
-                    placeholder="••••••••"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="regPassword"
+                      type={showRegPassword ? 'text' : 'password'}
+                      value={regPassword}
+                      onChange={(e) => {
+                        setRegPassword(e.target.value);
+                        setRegError('');
+                      }}
+                      className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg pr-10"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showRegPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-gray-700 text-sm">
+                  <Label htmlFor="regConfirmPassword" className="text-gray-700 text-sm">
                     Confirmer le mot de passe <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg"
-                    placeholder="••••••••"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="regConfirmPassword"
+                      type={showRegConfirmPassword ? 'text' : 'password'}
+                      value={regConfirmPassword}
+                      onChange={(e) => {
+                        setRegConfirmPassword(e.target.value);
+                        setRegError('');
+                      }}
+                      className="h-11 border-gray-200 focus:border-[#0d3d3d] focus:ring-[#0d3d3d] rounded-lg pr-10"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showRegConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
+
+                {regError && <p className="text-red-500 text-sm bg-red-50 p-3 rounded">{regError}</p>}
+                {regMessage && <p className="text-green-600 text-sm bg-green-50 p-3 rounded">{regMessage}</p>}
 
                 <Button
                   type="submit"
-                  className="w-full h-11 bg-[#0d3d3d] hover:bg-[#1a4d4d] text-white font-medium rounded-lg"
+                  disabled={isLoading}
+                  className="w-full h-11 bg-[#0d3d3d] hover:bg-[#1a4d4d] text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  S'inscrire →
+                  {isLoading ? 'Inscription en cours...' : 'S\'inscrire →'}
                 </Button>
               </form>
 
               <p className="text-center text-sm text-gray-500 mt-6">
                 Déjà un compte ?{' '}
                 <button
-                  onClick={() => setActiveTab('login')}
+                  onClick={() => {
+                    setActiveTab('login');
+                    setRegError('');
+                    setRegMessage('');
+                  }}
                   className="text-[#0d3d3d] font-medium hover:underline"
                 >
                   Se connecter

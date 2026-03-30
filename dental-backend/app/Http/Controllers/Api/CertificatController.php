@@ -10,7 +10,7 @@ class CertificatController extends Controller
 {
     public function index()
     {
-        return Certificat::with('consultation')->get();
+        return Certificat::with('consultation.rendezVous.patient')->get();
     }
 
     public function store(Request $r)
@@ -20,7 +20,7 @@ class CertificatController extends Controller
 
     public function show($id)
     {
-        return Certificat::with('consultation')->findOrFail($id);
+        return Certificat::with('consultation.rendezVous.patient')->findOrFail($id);
     }
 
     public function update(Request $r, $id)

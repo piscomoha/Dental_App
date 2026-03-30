@@ -8,9 +8,9 @@ use Illuminate\Http\Request;
 
 class OrdonnanceController extends Controller
 {
-    public function index(){ return Ordonnance::with('consultation')->get(); }
+    public function index(){ return Ordonnance::with('consultation.rendezVous.patient','consultation.rendezVous.dentiste')->get(); }
     public function store(Request $r){ return Ordonnance::create($r->all()); }
-    public function show($id){ return Ordonnance::with('consultation')->findOrFail($id); }
+    public function show($id){ return Ordonnance::with('consultation.rendezVous.patient','consultation.rendezVous.dentiste')->findOrFail($id); }
     public function update(Request $r,$id){ $o=Ordonnance::findOrFail($id); $o->update($r->all()); return $o; }
     public function destroy($id){ Ordonnance::findOrFail($id)->delete(); return response()->json(null,204); }
 }

@@ -16,6 +16,11 @@ import {
   Receipt
 } from 'lucide-react';
 import { patientApi, rendezVousApi, traitementApi } from '@/services/api';
+import { 
+  patients as mockPatients, 
+  appointments as mockAppointments, 
+  treatments as mockTreatments 
+} from '@/data/mockData';
 import { useDataSync } from '@/context/DataSyncContext';
 import type { Appointment } from '@/types';
 
@@ -42,7 +47,6 @@ export default function Dashboard() {
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [currentDate, setCurrentDate] = useState('');
   const [dashboardStats, setDashboardStats] = useState<Stat[]>([]);
-  const [treatmentCount, setTreatmentCount] = useState(0);
 
   useEffect(() => {
     const loadDashboard = async (silent = false) => {
@@ -52,36 +56,41 @@ export default function Dashboard() {
       let patientCount = 0;
       try {
         const patients = await patientApi.list();
-        patientCount = patients ? patients.length : 0;
-      } catch { void 0; }
+        patientCount = (patients && patients.length > 0) ? patients.length : mockPatients.length;
+      } catch { 
+        patientCount = mockPatients.length;
+      }
 
       let allAppointments: Appointment[] = [];
       try {
         const backendRdvs = await rendezVousApi.list();
-        if (backendRdvs) {
-          allAppointments = backendRdvs.map(rdv => ({
-            id: String(rdv.id),
-            patientId: String(rdv.patient_id || ''),
-            patientName: rdv.patient ? `${rdv.patient.nom} ${rdv.patient.prenom}`.trim() : 'Patient inconnu',
-            patientPhone: rdv.patient?.telephone || '',
-            date: rdv.date_rdv,
-            time: rdv.heure_rdv,
-            treatment: rdv.consultation?.traitements?.[0]?.nom_traitement || 'Consultation',
-            status: (rdv.statut || 'En attente') as Appointment['status'],
-            doctor: rdv.dentiste ? `Dr. ${rdv.dentiste.nom}` : 'Dr. Non assigné',
-          }));
-        }
-      } catch { void 0; }
+        const data = (backendRdvs && backendRdvs.length > 0) ? backendRdvs : mockAppointments;
+        allAppointments = data.map((rdv: any) => ({
+          id: String(rdv.id),
+          patientId: String(rdv.patient_id || rdv.patientId || ''),
+          patientName: rdv.patient ? `${rdv.patient.nom} ${rdv.patient.prenom}`.trim() : (rdv.patientName || 'Patient inconnu'),
+          patientPhone: rdv.patient?.telephone || rdv.patientPhone || '',
+          date: rdv.date_rdv || rdv.date,
+          time: rdv.heure_rdv || rdv.time,
+          treatment: rdv.consultation?.traitements?.[0]?.nom_traitement || rdv.treatment || 'Consultation',
+          status: (rdv.statut || rdv.status || 'En attente') as Appointment['status'],
+          doctor: rdv.dentiste ? `Dr. ${rdv.dentiste.nom}` : (rdv.doctor || 'Dr. Non assigné'),
+        }));
+      } catch (e) {
+        console.error("API error for appointments, using mock data:", e);
+        allAppointments = mockAppointments;
+      }
 
       let treatments = 0;
       try {
         const backendTreatments = await traitementApi.list();
-        treatments = backendTreatments ? backendTreatments.length : 0;
-      } catch { void 0; }
+        treatments = (backendTreatments && backendTreatments.length > 0) ? backendTreatments.length : mockTreatments.length;
+      } catch { 
+        treatments = mockTreatments.length;
+      }
 
       const todaysAppts = allAppointments.filter(apt => apt.date === today);
       setTodayAppointments(todaysAppts);
-      setTreatmentCount(treatments);
 
       const date = new Date();
       const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };

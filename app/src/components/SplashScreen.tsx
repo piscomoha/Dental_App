@@ -102,7 +102,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
           </h1>
           <div className="h-[1px] w-0 bg-gradient-to-r from-transparent via-[#c4a35a]/50 to-transparent mx-auto transition-all duration-1000 delay-500" style={{ width: progress > 10 ? '100%' : '0%' }}></div>
           <p className="text-sm text-gray-400 mt-4 tracking-[0.3em] uppercase opacity-0 transition-opacity duration-1000 delay-700 font-medium" style={{ opacity: progress > 20 ? 1 : 0 }}>
-            Dr. Benali & Associés
+            Cabinet Dentaire
           </p>
         </div>
 

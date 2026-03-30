@@ -2,7 +2,7 @@ import type { Patient, Appointment, Treatment, Document, Pharmacy, User } from '
 
 export const demoUsers: User[] = [
   { id: '1', name: 'Dr. Youssef', email: 'doctor@dental.ma', role: 'Doctor', avatar: 'YB' },
-  { id: '2', name: 'Fatima Zahra', email: 'admin@dental.ma', role: 'Admin', avatar: 'FZ' },
+  { id: '2', name: 'Mohammed Saide', email: 'admin@dental.ma', role: 'Admin', avatar: 'MS' },
   { id: '3', name: 'Karim Bensaid', email: 'receptionist@dental.ma', role: 'Receptionist', avatar: 'KB' },
   { id: '4', name: 'Sara Tazi', email: 'patient@dental.ma', role: 'Patient', avatar: 'ST' },
 ];

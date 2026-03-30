@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,20 +8,22 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Eye, Edit, Check, Trash2, Calendar } from 'lucide-react';
-import { treatmentTypes } from '@/data/mockData';
+import { Search, Plus, Eye, Edit, Check, Trash2, Calendar, FileText } from 'lucide-react';
+import { treatmentTypes, appointments as mockAppointments } from '@/data/mockData';
 import { useDataSync } from '@/context/DataSyncContext';
 import type { Appointment } from '@/types';
-import { rendezVousApi, patientApi, notificationApi, type BackendRendezVous, type BackendPatient } from '@/services/api';
+import { rendezVousApi, patientApi, notificationApi, ordonnanceApi, type BackendRendezVous, type BackendPatient } from '@/services/api';
 import { LoadingOverlay } from '@/components/ui/loading-overlay';
 
 
 const statusFilters = ['Tous', 'Confirmés', 'En attente', 'Annulés', 'Terminés'];
 
 export default function AppointmentsPage() {
+  const navigate = useNavigate();
   const { notifyDataChange } = useDataSync();
   const [activeFilter, setActiveFilter] = useState('Tous');
   const [searchQuery, setSearchQuery] = useState('');
+  const [doctorFilter, setDoctorFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [appointmentsList, setAppointmentsList] = useState<Appointment[]>([]);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
@@ -28,6 +31,9 @@ export default function AppointmentsPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [doctors, setDoctors] = useState<string[]>([]);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientsWithOrdonnances, setPatientsWithOrdonnances] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     patientId: '',
@@ -41,20 +47,20 @@ export default function AppointmentsPage() {
 
   const mapBackendRendezVousToAppointment = (backend: BackendRendezVous): Appointment => {
     const patientName = backend.patient
-      ? `${backend.patient.nom} ${backend.patient.prenom}`.trim()
+      ? `${backend.patient.nom || ''} ${backend.patient.prenom || ''}`.trim() || `Patient #${backend.patient_id}`
       : `Patient ${backend.patient_id ?? ''}`.trim();
 
     const treatmentName =
       backend.consultation?.traitements && backend.consultation.traitements.length > 0
-        ? backend.consultation.traitements[0].nom_traitement
+        ? backend.consultation.traitements[0].nom_traitement || 'Consultation'
         : 'Consultation';
 
     const doctorName = backend.dentiste
-      ? `Dr. ${backend.dentiste.nom} ${backend.dentiste.prenom}`.trim()
+      ? `Dr. ${backend.dentiste.nom || ''} ${backend.dentiste.prenom || ''}`.trim()
       : 'Dr. Youssef Benali';
 
     let status: Appointment['status'];
-    const rawStatus = backend.statut.toLowerCase();
+    const rawStatus = (backend.statut || 'En attente').toLowerCase();
     if (rawStatus.includes('confirm')) {
       status = 'Confirmé';
     } else if (rawStatus.includes('annul')) {
@@ -83,15 +89,44 @@ export default function AppointmentsPage() {
     try {
       if (!silent) setIsLoading(true);
       const backend = await rendezVousApi.list();
-      if (backend) {
-        const mapped = backend.map(mapBackendRendezVousToAppointment);
+      const ords = await ordonnanceApi.list().catch(() => []);
+      
+      // Map patients who have ordonnances
+      const pWithOrds = new Set<string>();
+      (ords || []).forEach((o: any) => {
+        const pId = o.consultation?.rendez_vous?.patient_id;
+        if (pId) pWithOrds.add(String(pId));
+        // Fallback for standalone certificates/ordonnances if any
+        if (o.patient_id) pWithOrds.add(String(o.patient_id));
+      });
+      setPatientsWithOrdonnances(pWithOrds);
+
+      if (backend && Array.isArray(backend) && backend.length > 0) {
+        const mapped = backend
+          .filter(Boolean)
+          .map(mapBackendRendezVousToAppointment);
         setAppointmentsList(mapped);
+        
+        // Extract unique doctors from sorted appointments
+        // Extract unique doctors from sorted appointments, ensuring they are strings
+        const filteredDoctors = mapped.map(a => a.doctor).filter((d): d is string => typeof d === 'string' && d !== '');
+        const uniqueDoctors = Array.from(new Set(filteredDoctors)).sort();
+        setDoctors(uniqueDoctors);
       } else {
-        setAppointmentsList([]);
+        // Fallback to mock data if backend is empty
+        console.log("Empty backend response, using mock appointments");
+        setAppointmentsList(mockAppointments);
+        const filteredDoctors = mockAppointments.map(a => a.doctor).filter((d): d is string => typeof d === 'string' && d !== '');
+        const uniqueDoctors = Array.from(new Set(filteredDoctors)).sort();
+        setDoctors(uniqueDoctors);
       }
     } catch (err) {
-      console.error(err);
-      setAppointmentsList([]);
+      console.error("API error, falling back to mock data:", err);
+      // Fallback to mock data on error
+      setAppointmentsList(mockAppointments);
+      const filteredDoctors = mockAppointments.map(a => a.doctor).filter((d): d is string => typeof d === 'string' && d !== '');
+      const uniqueDoctors = Array.from(new Set(filteredDoctors)).sort();
+      setDoctors(uniqueDoctors);
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -104,7 +139,7 @@ export default function AppointmentsPage() {
     const loadPatients = async () => {
       try {
         const fetchedPatients = await patientApi.list();
-        setPatients(fetchedPatients);
+        setPatients(fetchedPatients || []);
       } catch (err) {
         console.error("Could not load patients:", err);
       }
@@ -118,18 +153,41 @@ export default function AppointmentsPage() {
     return <LoadingOverlay message="Chargement des rendez-vous..." fullScreen={false} />;
   }
 
-  const filteredAppointments = appointmentsList.filter(apt => {
-    const matchesFilter = activeFilter === 'Tous' ||
-      (activeFilter === 'Confirmés' && apt.status === 'Confirmé') ||
-      (activeFilter === 'En attente' && apt.status === 'En attente') ||
-      (activeFilter === 'Annulés' && apt.status === 'Annulé') ||
-      (activeFilter === 'Terminés' && apt.status === 'Terminé');
+  const filteredAppointments = appointmentsList
+    .filter(apt => {
+      const matchesFilter = activeFilter === 'Tous' ||
+        (activeFilter === 'Confirmés' && apt.status === 'Confirmé') ||
+        (activeFilter === 'En attente' && apt.status === 'En attente') ||
+        (activeFilter === 'Annulés' && apt.status === 'Annulé') ||
+        (activeFilter === 'Terminés' && apt.status === 'Terminé');
 
-    const matchesSearch = apt.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.treatment.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = apt.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        apt.treatment.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesFilter && matchesSearch;
-  });
+      const matchesDoctor = doctorFilter === 'all' || apt.doctor === doctorFilter;
+
+      return matchesFilter && matchesSearch && matchesDoctor;
+    })
+    .sort((a, b) => {
+      // 1. Sort by Status importance (Confirmé > En attente > others)
+      const statusWeight: Record<string, number> = {
+        'Confirmé': 3,
+        'En attente': 2,
+        'Terminé': 1,
+        'Annulé': 0
+      };
+      const weightA = statusWeight[a.status] || 0;
+      const weightB = statusWeight[b.status] || 0;
+      if (weightB !== weightA) return weightB - weightA;
+
+      // 2. Sort by Date (descending)
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      if (dateB !== dateA) return dateB - dateA;
+
+      // 3. Sort by ID as a fallback for "newest first"
+      return Number(b.id) - Number(a.id);
+    });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -160,6 +218,7 @@ export default function AppointmentsPage() {
       });
     } else {
       setEditingAppointment(null);
+      setPatientSearch('');
       setFormData({
         patientId: '',
         phone: '',
@@ -230,13 +289,40 @@ export default function AppointmentsPage() {
 
   const handleConfirm = async (id: string) => {
     try {
-      await rendezVousApi.update(id, { statut: 'Confirmé' });
+      const apt = appointmentsList.find(a => a.id === id);
+      if (!apt || !apt.date) {
+        setErrorMessage("Données de rendez-vous incomplètes.");
+        return;
+      }
+
+      // Format time to H:i as expected by Laravel
+      const formattedTime = (apt.time || '00:00').substring(0, 5);
+
+      const payload = {
+        date_rdv: apt.date,
+        heure_rdv: formattedTime,
+        statut: 'Confirmé',
+        patient_id: Number(apt.patientId)
+      };
+
+      console.log('Confirming appointment with payload:', payload);
+
+      await rendezVousApi.update(id, payload);
       await loadAppointments();
+      notifyDataChange('appointment');
       setSuccessMessage("Rendez-vous confirmé avec succès.");
+      
+      // Feedback sound
+      try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.volume = 0.4;
+        audio.play().catch(() => {});
+      } catch (e) {}
+
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
-      console.error(err);
-      setErrorMessage("Erreur lors de la confirmation.");
+      console.error('Confirmation error:', err);
+      setErrorMessage("Erreur lors de la confirmation: " + (err instanceof Error ? err.message : 'Détails inconnus'));
       setTimeout(() => setErrorMessage(''), 4000);
     }
   };
@@ -269,7 +355,7 @@ export default function AppointmentsPage() {
             className="pl-10 h-11 rounded-lg border-gray-200"
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           {statusFilters.map((filter) => (
             <Button
               key={filter}
@@ -280,6 +366,19 @@ export default function AppointmentsPage() {
               {filter}
             </Button>
           ))}
+          <Select value={doctorFilter} onValueChange={setDoctorFilter}>
+            <SelectTrigger className="w-40 h-10 rounded-lg border-gray-200">
+              <SelectValue placeholder="Tous les médecins" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les médecins</SelectItem>
+              {doctors.map((doctor) => (
+                <SelectItem key={`doctor-${doctor}`} value={doctor}>
+                  {doctor}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -310,7 +409,12 @@ export default function AppointmentsPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium text-gray-900">{appointment.patientName}</p>
+                            <p 
+                              onClick={() => navigate(`/medical-record/${appointment.patientId}`)}
+                              className="font-medium text-gray-900 cursor-pointer hover:text-[#0d3d3d] hover:underline transition-colors"
+                            >
+                              {appointment.patientName}
+                            </p>
                             <p className="text-sm text-gray-500">{appointment.patientPhone}</p>
                           </div>
                         </div>
@@ -325,27 +429,41 @@ export default function AppointmentsPage() {
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => handleOpenModal(appointment)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/medical-record/${appointment.patientId}`); }}
+                            title="Dossier Médical"
+                            className="p-2 relative text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors group"
+                          >
+                            <FileText className="w-4 h-4" />
+                            {patientsWithOrdonnances.has(String(appointment.patientId)) && (
+                              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                            )}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleOpenModal(appointment); }}
+                            title="Détails"
                             className="p-2 text-gray-400 hover:text-[#0d3d3d] hover:bg-gray-100 rounded-lg transition-colors"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleOpenModal(appointment)}
+                            onClick={(e) => { e.stopPropagation(); handleOpenModal(appointment); }}
+                            title="Modifier"
                             className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           {appointment.status === 'En attente' && (
                             <button
-                              onClick={() => handleConfirm(appointment.id)}
+                              onClick={(e) => { e.stopPropagation(); handleConfirm(appointment.id); }}
+                              title="Confirmer"
                               className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             >
                               <Check className="w-4 h-4" />
                             </button>
                           )}
                           <button
-                            onClick={() => handleDelete(appointment.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(appointment.id); }}
+                            title="Supprimer"
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -377,20 +495,56 @@ export default function AppointmentsPage() {
           <div className="space-y-4 pt-4">
             <div className="space-y-2">
               <Label className="text-sm">Patient <span className="text-red-500">*</span></Label>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Chercher un patient..."
+                  value={patientSearch}
+                  onChange={(e) => {
+                    const search = e.target.value;
+                    setPatientSearch(search);
+                    
+                    // Auto-select if exactly one match
+                    if (search.length > 2) {
+                      const matches = patients.filter(p => 
+                        `${p.nom} ${p.prenom}`.toLowerCase().includes(search.toLowerCase())
+                      );
+                      if (matches.length === 1) {
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          patientId: String(matches[0].id),
+                          phone: matches[0].telephone || ''
+                        }));
+                      }
+                    }
+                  }}
+                  className="pl-9 h-10 rounded-lg border-gray-200 text-sm"
+                />
+              </div>
               <Select
                 value={formData.patientId}
                 onValueChange={(val) => {
                   const patient = patients.find(p => String(p.id) === val);
                   setFormData({ ...formData, patientId: val, phone: patient?.telephone || '' });
+                  if (patient) setPatientSearch(`${patient.nom} ${patient.prenom}`.trim());
                 }}
               >
                 <SelectTrigger className="h-11 rounded-lg border-gray-200">
                   <SelectValue placeholder="Sélectionner un patient..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {patients.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>{`${p.nom} ${p.prenom}`}</SelectItem>
-                  ))}
+                  {(patients || [])
+                    .filter(p => 
+                      !patientSearch || 
+                      `${p.nom} ${p.prenom}`.toLowerCase().includes(patientSearch.toLowerCase())
+                    )
+                    .map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{`${p.nom || ''} ${p.prenom || ''}`.trim() || `Patient #${p.id}`}</SelectItem>
+                    ))
+                  }
+                  {(patients || []).filter(p => !patientSearch || `${p.nom} ${p.prenom}`.toLowerCase().includes(patientSearch.toLowerCase())).length === 0 && (
+                    <div className="p-2 text-center text-xs text-gray-500">Aucun patient trouvé</div>
+                  )}
                 </SelectContent>
               </Select>
             </div>

@@ -18,9 +18,6 @@ import {
   validateName,
   validatePhone,
   validateDate,
-  validateRequiredSelect,
-  validateDescription,
-  sanitizeInput,
 } from '@/lib/validators';
 
 export default function PatientsPage() {
@@ -35,7 +32,6 @@ export default function PatientsPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // Dossier Médical State
   const [isDossierOpen, setIsDossierOpen] = useState(false);
@@ -63,8 +59,9 @@ export default function PatientsPage() {
       age = today.getFullYear() - birthDate.getFullYear();
     }
 
+    const rawSexe = (backend.sexe || 'M').toLowerCase();
     const gender =
-      backend.sexe === 'F' || backend.sexe.toLowerCase().startsWith('f')
+      rawSexe.startsWith('f')
         ? 'Féminin'
         : 'Masculin';
 
@@ -104,15 +101,16 @@ export default function PatientsPage() {
     setIsLoading(true);
     try {
       const backendPatients = await patientApi.list();
-      if (backendPatients) {
+      if (backendPatients && backendPatients.length > 0) {
         const mapped = backendPatients.map(mapBackendPatientToFrontend);
         setPatientsList(mapped);
       } else {
-        setPatientsList([]);
+        // Fallback to mock data if backend is empty
+        setPatientsList(mockPatients);
       }
     } catch (error) {
-      console.error('Failed to load patients:', error);
-      setPatientsList([]);
+      console.error('Failed to load patients, falling back to mock data:', error);
+      setPatientsList(mockPatients);
     } finally {
       setIsLoading(false);
     }
@@ -180,7 +178,6 @@ export default function PatientsPage() {
 
   const handleSave = async () => {
     try {
-      setFormErrors({});
       const errors: Record<string, string> = {};
 
       // Validate name
@@ -198,7 +195,6 @@ export default function PatientsPage() {
       }
 
       if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
         setErrorMessage('Veuillez corriger les erreurs dans le formulaire');
         return;
       }
@@ -213,7 +209,6 @@ export default function PatientsPage() {
         setShowSuccessMessage('Patient créé avec succès');
       }
       setIsModalOpen(false);
-      setFormErrors({});
       await loadPatients();
       notifyDataChange('patient');
       setTimeout(() => setShowSuccessMessage(''), 3000);
